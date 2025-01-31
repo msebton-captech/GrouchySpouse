@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -14,8 +14,8 @@ namespace GrouchySpouse
 {
     class Program
     {
-        private static readonly HttpClient _openAIClient = new HttpClient();
-        private static readonly HttpClient _replicateClient = new HttpClient();
+        private static readonly HttpClient _openAIClient = new();
+        private static readonly HttpClient _replicateClient = new();
 
         private static string? SYSTEM_PROMPT;
 
@@ -37,7 +37,7 @@ namespace GrouchySpouse
 
             _openAIClient.BaseAddress = new Uri("https://api.groq.com/openai/v1/");
             //_openAIClient.DefaultRequestHeaders.Authorization = 
-            //    new AuthenticationHeaderValue("Bearer", "sk-XXXX");
+            //    new AuthenticationHeaderValue("Bearer", "sk-XXX");
 
             _openAIClient.DefaultRequestHeaders.Authorization = 
                 new AuthenticationHeaderValue("Bearer", "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");
@@ -115,13 +115,24 @@ namespace GrouchySpouse
                 var tempFile = Path.GetTempFileName();
 
 
-                Console.WriteLine("\nWriting {0} to {1}", outputUrl, tempFile);
+#if DEBUG
+                Console.WriteLine($"\nWriting \"{outputUrl}\" to \"{tempFile}\"");  // Debug-only logging
+#endif
                 await DownloadAudioFile(outputUrl, tempFile);
                 await PlayAudioAsync(tempFile);
+#if DEBUG
+                Console.WriteLine("Deleting file \"{0}\"\n", tempFile);
+#endif
                 File.Delete(tempFile);  // Clean up the temp file after playing
             }
         }
 
+    /// <summary>
+    /// Obtains a prediction from the Replicate API
+    /// </summary>
+    /// <param name="text"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
         static async Task<ReplicateCreateResponse> CreatePrediction(string text)
         {
             var response = await _replicateClient.PostAsJsonAsync("https://api.replicate.com/v1/predictions", new
@@ -130,8 +141,11 @@ namespace GrouchySpouse
                 input = new
                 {
                     text = text,
+                    language = "en",
+                    temperature = 0.5,
+                    length = 1.0,
                     speed = 1.1,
-                    voice = "af_bella" // af_bella, af_zoe, af_lisa, af_zoe, af_mia, af_samantha, af_olivia, af_isabella
+                    voice = "af_bella" // af_bella, af_zoe, af_lisa, af_mia, af_samantha, af_olivia, af_isabella
                 }
             });
 
@@ -139,12 +153,19 @@ namespace GrouchySpouse
             return result;
         }
 
+        /// <summary>
+        /// Waits for the prediction to complete
+        /// </summary>
+        /// <param name="predictionId"></param>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException"></exception>
         static async Task<string> WaitForPredictionCompletion(string predictionId)
         {
             ReplicateStatusResponse statusResponse;
             do
             {
                 await Task.Delay(1000);
+                Console.WriteLine("Waiting for Replicate API response...");
                 var response = await _replicateClient.GetAsync(
                     $"https://api.replicate.com/v1/predictions/{predictionId}");
                 
