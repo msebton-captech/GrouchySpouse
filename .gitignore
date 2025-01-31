@@ -48,3 +48,8 @@ global.json
 
 # Ignore VS Code files
 .vscode/
+/.vs/GrouchySpouse/v17/DocumentLayout.backup.json
+/.vs/GrouchySpouse/v17/DocumentLayout.json
+/.vs/GrouchySpouse/FileContentIndex
+/.vs/GrouchySpouse/CopilotIndices/17.12.38.29086
+/.vs/GrouchySpouse/copilot-chat/38594b76/sessions

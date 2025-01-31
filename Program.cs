@@ -8,6 +8,7 @@ using System.IO;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
+using Microsoft.Extensions.Configuration;
 
 
 namespace GrouchySpouse
@@ -32,6 +33,20 @@ namespace GrouchySpouse
 
         static void InitializeClients()
         {
+            var config = new ConfigurationBuilder().AddUserSecrets<Program>().Build();
+
+            var openApiToken = config["OpenApiToken"];
+            if (string.IsNullOrEmpty(openApiToken))
+            {
+                throw new InvalidOperationException("OpenApi Token is not configured in user secrets.");
+            }
+
+            var replicateToken = config["ReplicateToken"];
+            if (string.IsNullOrEmpty(replicateToken))
+            {
+                throw new InvalidOperationException("Replicate Token is not configured in user secrets.");
+            }
+
             // DeepSeek or other "Open" AI API
             //_openAIClient.BaseAddress = new Uri("https://api.deepseek.com/");
 
@@ -40,11 +55,11 @@ namespace GrouchySpouse
             //    new AuthenticationHeaderValue("Bearer", "sk-XXX");
 
             _openAIClient.DefaultRequestHeaders.Authorization = 
-                new AuthenticationHeaderValue("Bearer", "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");
+                new AuthenticationHeaderValue("Bearer", openApiToken);
             
             // Replicate API
             _replicateClient.DefaultRequestHeaders.Authorization = 
-               new AuthenticationHeaderValue("Bearer", "r8_2jT3UvKN3Y83jeGEgI1OuucAVH2aa8u23hYQg");
+               new AuthenticationHeaderValue("Bearer", replicateToken);
         }
 
         /// <summary>
