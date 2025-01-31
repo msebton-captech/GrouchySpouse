@@ -40,11 +40,11 @@ namespace GrouchySpouse
             //    new AuthenticationHeaderValue("Bearer", "sk-XXXX");
 
             _openAIClient.DefaultRequestHeaders.Authorization = 
-                new AuthenticationHeaderValue("Bearer", "gsk_XXXX");
+                new AuthenticationHeaderValue("Bearer", "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");
             
             // Replicate API
             _replicateClient.DefaultRequestHeaders.Authorization = 
-               new AuthenticationHeaderValue("Bearer", "r8_XXXX");
+               new AuthenticationHeaderValue("Bearer", "r8_2jT3UvKN3Y83jeGEgI1OuucAVH2aa8u23hYQg");
         }
 
         /// <summary>
