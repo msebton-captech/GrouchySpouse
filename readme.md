@@ -1,6 +1,7 @@
 # GrouchySpouse
 
-A fun project that leverages multi-platform audio to produce a grouchy version of your spouse or partner. Change the system prompt by modifying system_prompt.txt. Easy! 
+A fun project that leverages multi-platform audio to produce a grouchy version of your spouse or partner. Change the system prompt by modifying system_prompt.txt. Easy! ![th](https://github.com/user-attachments/assets/36968083-6b90-4130-9c1d-fd47780737de)
+
 
 ## Features
 
@@ -12,7 +13,8 @@ A fun project that leverages multi-platform audio to produce a grouchy version o
 
 - .NET SDK
 - An API key for OpenAI
-- An API key for Replicate
+- An API key for Replicate![Uploading th.jpg…]()
+
 
 ## Setup
 
