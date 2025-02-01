@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System;
+﻿﻿﻿﻿﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -19,6 +19,11 @@ namespace GrouchySpouse
         private static readonly HttpClient _replicateClient = new();
 
         private static string? SYSTEM_PROMPT;
+
+        /// <summary>
+        /// Using this for the API timeout for Replicate API. If it doesn't response within X seconds, only the LLM response will be used - no audio.
+        /// </summary>
+        private static short _apiTimeout = 8;  // API timeout in seconds
 
 
         static async Task Main(string[] args)
@@ -125,18 +130,23 @@ namespace GrouchySpouse
             var prediction = await CreatePrediction(text);
             var outputUrl = await WaitForPredictionCompletion(prediction.Id);
 
-            if (outputUrl != null)
+            if (String.IsNullOrEmpty(outputUrl))
+            {
+                Console.WriteLine("No audio will be played.");
+                return;
+            }
+            else
             {
                 var tempFile = Path.GetTempFileName();
 
 
 #if DEBUG
-                Console.WriteLine($"\nWriting \"{outputUrl}\" to \"{tempFile}\"");  // Debug-only logging
+                Console.WriteLine($"\nWriting audio file \"{outputUrl}\" to \"{tempFile}\"");  // Debug-only logging
 #endif
                 await DownloadAudioFile(outputUrl, tempFile);
                 await PlayAudioAsync(tempFile);
 #if DEBUG
-                Console.WriteLine("Deleting file \"{0}\"\n", tempFile);
+                Console.WriteLine("Deleting audio file \"{0}\"\n", tempFile);
 #endif
                 File.Delete(tempFile);  // Clean up the temp file after playing
             }
@@ -174,20 +184,42 @@ namespace GrouchySpouse
         /// <param name="predictionId"></param>
         /// <returns></returns>
         /// <exception cref="InvalidOperationException"></exception>
+        /// <summary>
+        /// Waits for prediction completion with timeout handling
+        /// </summary>
         static async Task<string> WaitForPredictionCompletion(string predictionId)
         {
-            ReplicateStatusResponse statusResponse;
-            do
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(_apiTimeout));
+            var statusResponse = new ReplicateStatusResponse { Status = "starting", Output = string.Empty };
+            var apiUrl = $"https://api.replicate.com/v1/predictions/{predictionId}";
+            
+            try
             {
-                await Task.Delay(1000);
-                Console.WriteLine("Waiting for Replicate API response...");
-                var response = await _replicateClient.GetAsync(
-                    $"https://api.replicate.com/v1/predictions/{predictionId}");
-                
-                statusResponse = await response.Content.ReadFromJsonAsync<ReplicateStatusResponse>() ?? throw new InvalidOperationException("Failed to deserialize the response.");
-            } while (statusResponse.Status == "starting" || statusResponse.Status == "processing");
+                // Poll the API until the prediction is complete or the _apiTimeout value is reached
+                while (statusResponse.IsProcessing() && !cts.Token.IsCancellationRequested)
+                {
+                    Console.WriteLine("Polling Replicate API status...");
+                    await Task.Delay(1000, cts.Token);
+                    
+                    var response = await _replicateClient.GetAsync(apiUrl, cts.Token);
+                    response.EnsureSuccessStatusCode();
+                    
+                    statusResponse = await response.Content.ReadFromJsonAsync<ReplicateStatusResponse>()
+                        ?? throw new InvalidOperationException("Invalid API response format");
+                }
+            }
+            catch (TaskCanceledException) when (cts.IsCancellationRequested)
+            {
+                Console.WriteLine("API request timed out after {0} seconds", _apiTimeout);
+                return ""; // return empty to the caller so it knows no audio is to be played
+            }
+            catch (HttpRequestException ex)
+            {
+                Console.WriteLine($"HTTP Error: {ex.StatusCode}");
+                throw;
+            }
 
-            return statusResponse.Status == "succeeded" && statusResponse.Output != null ? statusResponse.Output : string.Empty;
+            return statusResponse.SucceededWithOutput();
         }
 
         /// <summary>
@@ -271,5 +303,14 @@ namespace GrouchySpouse
     {
         public required string Status { get; set; }
         public required string Output { get; set; }
+
+        public bool IsProcessing() => Status == "starting" || Status == "processing";
+        
+        /// <summary>
+        /// Helper function to indicate process status. Useful for API timeout handling.
+        /// </summary>
+        /// <returns></returns>
+        public string SucceededWithOutput() =>
+            Status == "succeeded" && !string.IsNullOrEmpty(Output) ? Output : string.Empty;
     }
 }
