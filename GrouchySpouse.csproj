@@ -13,6 +13,7 @@
     <None Update="system_prompt.txt">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.42.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="6.0.1" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Windows.Extensions" Version="6.0.0" />

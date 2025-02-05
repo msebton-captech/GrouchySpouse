@@ -9,22 +9,18 @@ using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
-
+using Microsoft.CognitiveServices.Speech;
 
 namespace GrouchySpouse
 {
     class Program
     {
         private static readonly HttpClient _openAIClient = new();
-        private static readonly HttpClient _replicateClient = new();
-
         private static string? SYSTEM_PROMPT;
-
-        /// <summary>
-        /// Using this for the API timeout for Replicate API. If it doesn't response within X seconds, only the LLM response will be used - no audio.
-        /// </summary>
-        private static short _apiTimeout = 8;  // API timeout in seconds
-
+        
+        private static string? openApiToken;
+        private static string? subscriptionKey;
+        private static string? subscriptionRegion;
 
         static async Task Main(string[] args)
         {
@@ -32,7 +28,7 @@ namespace GrouchySpouse
             InitializeClients();
             SYSTEM_PROMPT = await File.ReadAllTextAsync("system_prompt.txt"); // read the system prompt from a flat text file
 
-            Console.WriteLine("\nSYSTEM PROMPT:\n" + SYSTEM_PROMPT + "\n");
+            //Console.WriteLine("\nSYSTEM PROMPT:\n" + SYSTEM_PROMPT + "\n");
             await Chat();        
         }
 
@@ -40,16 +36,22 @@ namespace GrouchySpouse
         {
             var config = new ConfigurationBuilder().AddUserSecrets<Program>().Build();
 
-            var openApiToken = config["OpenApiToken"];
+            openApiToken = config["OpenApiToken"];
             if (string.IsNullOrEmpty(openApiToken))
             {
                 throw new InvalidOperationException("OpenApi Token is not configured in user secrets.");
             }
 
-            var replicateToken = config["ReplicateToken"];
-            if (string.IsNullOrEmpty(replicateToken))
+            subscriptionKey = config["SpeechServiceSubscriptionKey"];
+            if (string.IsNullOrEmpty(subscriptionKey))
             {
-                throw new InvalidOperationException("Replicate Token is not configured in user secrets.");
+                throw new InvalidOperationException("Speech Service Subscription Key is not configured in user secrets.");
+            }
+
+            subscriptionRegion = config["SpeechServiceRegion"];
+            if (string.IsNullOrEmpty(subscriptionRegion))
+            {
+                throw new InvalidOperationException("Speech Service Subscription Region is not configured in user secrets.");
             }
 
             // DeepSeek or other "Open" AI API
@@ -61,10 +63,6 @@ namespace GrouchySpouse
 
             _openAIClient.DefaultRequestHeaders.Authorization = 
                 new AuthenticationHeaderValue("Bearer", openApiToken);
-            
-            // Replicate API
-            _replicateClient.DefaultRequestHeaders.Authorization = 
-               new AuthenticationHeaderValue("Bearer", replicateToken);
         }
 
         /// <summary>
@@ -116,7 +114,7 @@ namespace GrouchySpouse
                 Console.WriteLine(answer);
                 history.Add(new ChatMessage { Role = "assistant", Content = answer });
                 
-                await SynthesizeAndPlayAudio(answer);
+                await SynthesizeAndPlayAudio(answer, subscriptionKey, subscriptionRegion);
             }
         }
 
@@ -125,150 +123,46 @@ namespace GrouchySpouse
         /// </summary>
         /// <param name="text"></param>
         /// <returns></returns>
-        static async Task SynthesizeAndPlayAudio(string text)
+        static async Task SynthesizeAndPlayAudio(string text, string? subscriptionKey, string? subscriptionRegion)
         {
-            var prediction = await CreatePrediction(text);
-            var outputUrl = await WaitForPredictionCompletion(prediction.Id);
+            var config = SpeechConfig.FromSubscription(subscriptionKey, subscriptionRegion);
+            config.SpeechSynthesisVoiceName = "en-US-AriaNeural";
 
-            if (String.IsNullOrEmpty(outputUrl))
-            {
-                Console.WriteLine("No audio will be played.");
-                return;
-            }
-            else
-            {
-                var tempFile = Path.GetTempFileName();
-
-
-#if DEBUG
-                Console.WriteLine($"\nWriting audio file \"{outputUrl}\" to \"{tempFile}\"");  // Debug-only logging
-#endif
-                await DownloadAudioFile(outputUrl, tempFile);
-                await PlayAudioAsync(tempFile);
-#if DEBUG
-                Console.WriteLine("Deleting audio file \"{0}\"\n", tempFile);
-#endif
-                File.Delete(tempFile);  // Clean up the temp file after playing
-            }
-        }
-
-    /// <summary>
-    /// Obtains a prediction from the Replicate API
-    /// </summary>
-    /// <param name="text"></param>
-    /// <returns></returns>
-    /// <exception cref="InvalidOperationException"></exception>
-        static async Task<ReplicateCreateResponse> CreatePrediction(string text)
-        {
-            var response = await _replicateClient.PostAsJsonAsync("https://api.replicate.com/v1/predictions", new
-            {
-                version = "dfdf537ba482b029e0a761699e6f55e9162cfd159270bfe0e44857caa5f275a6",
-                input = new
-                {
-                    text = text,
-                    language = "en",
-                    temperature = 0.5,
-                    length = 1.0,
-                    speed = 1.1,
-                    voice = "af_bella" // af_bella, af_zoe, af_lisa, af_mia, af_samantha, af_olivia, af_isabella
-                }
-            });
-
-            var result = await response.Content.ReadFromJsonAsync<ReplicateCreateResponse>() ?? throw new InvalidOperationException("Failed to deserialize the response.");
-            return result;
+            await CreateAudio(text, config);
         }
 
         /// <summary>
-        /// Waits for the prediction to complete
+        /// Obtains audio from the Speech Service
         /// </summary>
-        /// <param name="predictionId"></param>
+        /// <param name="text"></param>
+        /// <param name="config"></param>
         /// <returns></returns>
-        /// <exception cref="InvalidOperationException"></exception>
-        /// <summary>
-        /// Waits for prediction completion with timeout handling
-        /// </summary>
-        static async Task<string> WaitForPredictionCompletion(string predictionId)
+        static async Task CreateAudio(string text, SpeechConfig config)
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(_apiTimeout));
-            var statusResponse = new ReplicateStatusResponse { Status = "starting", Output = string.Empty };
-            var apiUrl = $"https://api.replicate.com/v1/predictions/{predictionId}";
-            
-            try
+            using (var synthesizer = new SpeechSynthesizer(config))
             {
-                // Poll the API until the prediction is complete or the _apiTimeout value is reached
-                while (statusResponse.IsProcessing() && !cts.Token.IsCancellationRequested)
+                using (var result = await synthesizer.SpeakTextAsync(text))
                 {
-                    Console.WriteLine("Polling Replicate API status...");
-                    await Task.Delay(1000, cts.Token);
-                    
-                    var response = await _replicateClient.GetAsync(apiUrl, cts.Token);
-                    response.EnsureSuccessStatusCode();
-                    
-                    statusResponse = await response.Content.ReadFromJsonAsync<ReplicateStatusResponse>()
-                        ?? throw new InvalidOperationException("Invalid API response format");
+                    if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+                    {
+                        Console.WriteLine($"Speech synthesized for text [{text}]");
+                    }
+                    else if (result.Reason == ResultReason.Canceled)
+                    {
+                        Console.WriteLine("No audio will be played.");
+#if DEBUG
+                        var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                        Console.WriteLine($"CANCELED: Reason={cancellation.Reason}");
+
+                        if (cancellation.Reason == CancellationReason.Error)
+                        {
+                            Console.WriteLine($"CANCELED: ErrorCode={cancellation.ErrorCode}");
+                            Console.WriteLine($"CANCELED: ErrorDetails=[{cancellation.ErrorDetails}]");
+                            Console.WriteLine($"CANCELED: Did you update the subscription info?");
+                        }
+#endif
+                    }
                 }
-            }
-            catch (TaskCanceledException) when (cts.IsCancellationRequested)
-            {
-                Console.WriteLine("API request timed out after {0} seconds", _apiTimeout);
-                return ""; // return empty to the caller so it knows no audio is to be played
-            }
-            catch (HttpRequestException ex)
-            {
-                Console.WriteLine($"HTTP Error: {ex.StatusCode}");
-                throw;
-            }
-
-            return statusResponse.SucceededWithOutput();
-        }
-
-        /// <summary>
-        /// Downloads the audio stream to a file
-        /// </summary>
-        /// <param name="url"></param>
-        /// <param name="filePath"></param>
-        /// <returns></returns>
-        static async Task DownloadAudioFile(string url, string filePath)
-        {
-            using var httpClient = new HttpClient();
-            var audioBytes = await httpClient.GetByteArrayAsync(url);
-            await File.WriteAllBytesAsync(filePath, audioBytes);
-        }
-
-        /// <summary>
-        /// Give her a voice. Multi-platform audio playback.
-        /// </summary>
-        /// <param name="filePath"></param>
-        private static async Task PlayAudioAsync(string filePath)
-        {
-            // Different OS's handle audio differently. 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            {
-                // MacOS
-                var process = new System.Diagnostics.Process();
-                process.StartInfo.FileName = "afplay";
-                process.StartInfo.Arguments = filePath;
-                process.Start();
-                await process.WaitForExitAsync();
-            }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                // Windows
-                var player = new System.Media.SoundPlayer(filePath);
-                player.PlaySync();
-            }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            {
-                // Linux
-                var process = new System.Diagnostics.Process();
-                process.StartInfo.FileName = "aplay";
-                process.StartInfo.Arguments = filePath;
-                process.Start();
-                await process.WaitForExitAsync();
-            }
-            else
-            {
-                throw new NotSupportedException("Your OS is not supported for audio playback.");
             }
         }
     }
@@ -292,25 +186,5 @@ namespace GrouchySpouse
         {
             public required string Content { get; set; }
         }
-    }
-
-    public class ReplicateCreateResponse
-    {
-        public required string Id { get; set; }
-    }
-
-    public class ReplicateStatusResponse
-    {
-        public required string Status { get; set; }
-        public required string Output { get; set; }
-
-        public bool IsProcessing() => Status == "starting" || Status == "processing";
-        
-        /// <summary>
-        /// Helper function to indicate process status. Useful for API timeout handling.
-        /// </summary>
-        /// <returns></returns>
-        public string SucceededWithOutput() =>
-            Status == "succeeded" && !string.IsNullOrEmpty(Output) ? Output : string.Empty;
     }
 }
