@@ -143,11 +143,11 @@ namespace GrouchySpouse
             {
                 using (var result = await synthesizer.SpeakTextAsync(text))
                 {
-                    if (result.Reason == ResultReason.SynthesizingAudioCompleted)
-                    {
-                        Console.WriteLine($"Speech synthesized for text [{text}]");
-                    }
-                    else if (result.Reason == ResultReason.Canceled)
+                    //if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+                    //{
+                    //    Console.WriteLine($"Speech synthesized for text [{text}]");
+                    //}
+                    if (result.Reason == ResultReason.Canceled)
                     {
                         Console.WriteLine("No audio will be played.");
 #if DEBUG
