@@ -114,7 +114,7 @@ namespace GrouchySpouse
                 Console.WriteLine(answer);
                 history.Add(new ChatMessage { Role = "assistant", Content = answer });
                 
-                await SynthesizeAndPlayAudio(answer, subscriptionKey, subscriptionRegion);
+                await SynthesizeAndPlayAudio(answer);
             }
         }
 
@@ -123,7 +123,7 @@ namespace GrouchySpouse
         /// </summary>
         /// <param name="text"></param>
         /// <returns></returns>
-        static async Task SynthesizeAndPlayAudio(string text, string? subscriptionKey, string? subscriptionRegion)
+        static async Task SynthesizeAndPlayAudio(string text)
         {
             var config = SpeechConfig.FromSubscription(subscriptionKey, subscriptionRegion);
             config.SpeechSynthesisVoiceName = "en-US-AriaNeural";
