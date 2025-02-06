@@ -1,15 +1,7 @@
-﻿﻿﻿﻿﻿﻿﻿﻿using System;
-using System.Collections.Generic;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Threading.Tasks;
-using NAudio.Wave;
-using System.IO;
-using System.Net.Http.Json;
-using System.Runtime.InteropServices;
-using System.Diagnostics;
+﻿using Microsoft.CognitiveServices.Speech;
 using Microsoft.Extensions.Configuration;
-using Microsoft.CognitiveServices.Speech;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 
 namespace GrouchySpouse
 {
@@ -99,7 +91,7 @@ namespace GrouchySpouse
                 // check for a null completion...
                 var answer = completion?.Choices?[0]?.Message?.Content ?? "No response from the model...";
                 
-                Console.WriteLine(answer);
+                Console.WriteLine($"Spouse: {answer}");
                 history.Add(new ChatMessage { Role = "assistant", Content = answer });
                 
                 await SynthesizeAndPlayAudio(answer);
